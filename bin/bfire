@@ -1,0 +1,136 @@
+#!/usr/bin/env ruby
+require 'bfire'
+require 'optparse'
+require 'logger'
+require 'pp'
+
+logger = Logger.new(STDERR)
+logger.level = Logger.const_get(ENV['DEBUG'] || "WARN")
+
+@options = {
+  :logger => logger,
+  :restfully_config => File.expand_path(
+    "~/.restfully/api.bonfire-project.eu"
+  )
+}
+
+option_parser = OptionParser.new do |opts|
+  opts.banner = <<BANNER
+* Description
+  bfire: Launch experiments on BonFIRE.
+
+* Usage
+  $ bfire engine-file
+
+* Options
+BANNER
+  # 
+  # opts.on("-a=", "--authorized-keys-file=", "Specify an authorized_keys file to use instead of your public key [default=#{Engine.defaults[:public_key]}].") do |v|
+  #   authorized_keys_file = File.expand_path(v)
+  #   if File.file?(authorized_keys_file) && File.readable?(authorized_keys_file)
+  #     @options[:public_key] = authorized_keys_file
+  #   else
+  #     fail "Cannot find your authorized_keys file at #{authorized_keys_file.inspect}"
+  #   end
+  # end
+  # opts.on("-c=", "--config=", "Pass the Restfully YAML configuration file. See <https://github.com/crohr/restfully>.") do |v|
+  #   @options[:restfully_config] = File.expand_path(v)
+  # end
+  # opts.on("-u=", "--user=", "Specify your Grid'5000 username [default=#{Engine.defaults[:user]}].") do |v|
+  #   @options[:user] = v
+  # end
+  # opts.on("-g=", "--gateway=", "Issues SSH commands via the specified gateway.") do |v|
+  #   @options[:gateway] = v
+  # end
+  # opts.on("-w=", "--walltime=", "Specify the walltime for the job (in seconds) [default=#{Engine.defaults[:walltime]}].") do |v|
+  #   @options[:walltime] = v.to_i
+  # end
+  # opts.on("-r=", "--resources=", "Specify the resources for the job [default=#{Engine.defaults[:resources]}].") do |v|
+  #   @options[:resources] = v
+  # end
+  # opts.on("-s=", "--site=", "Site on which to launch the experiment [default=#{Engine.defaults[:site]}].") do |v|
+  #   @options[:site] = v
+  # end
+  # opts.on("-e=", "--environment=", "Specify the environment to use [default=#{Engine.defaults[:environment]}].") do |v|
+  #   @options[:environment] = v
+  # end
+  # opts.on("-k=", "--key=", "Specify the private key to use [default=#{Engine.defaults[:private_key]}].") do |v|
+  #   public_key = File.expand_path(v+".pub")
+  #   if File.file?(public_key) && File.readable?(public_key)
+  #     @options[:private_key] = v
+  #     @options[:public_key] ||= public_key # public_key can already be set by --authorized-keys-file, don't override
+  #   else
+  #     fail "Cannot find the public part of your SSH key at #{public_key.inspect}"
+  #   end
+  # end
+  # opts.on("--deployment-max-attempts=", "In case the deployment fails, specifies the number of retries allowed [default=#{Engine.defaults[:deployment_max_attempts]}]") do |v|
+  #   @options[:deployment_max_attempts] = v.to_i
+  # end
+  # opts.on("--deployment-min-threshold=", "For a deployment, specifies the minimum percentage (1=100%) of nodes that must have been correctly deployed [default=#{Engine.defaults[:deployment_min_threshold]}]") do |v|
+  #   @options[:deployment_min_threshold] = v.to_i
+  # end
+  # opts.on("--notifications=", "A comma-separated list of notification URIs [default=#{Engine.defaults[:notifications].inspect}]") do |v|
+  #   @options[:notifications] = v.split(",")
+  # end
+  # {
+  #   :no_deploy => "Attempts to re-use an existing deployment on the same resources.",
+  #   :no_submit => "Attempts to re-use an existing job with the same name.",
+  #   :no_cleanup => "Do not delete job and deployment at the end of the experiment.",
+  #   :no_cancel => "Do not cancel job and deployment even if an error occurs.",
+  #   :no_install => "Do no execute the installation phase.",
+  #   :no_execute => "Do not execute the execution phase."
+  # }.each do |flag, description|
+  #   opts.on("--#{flag.to_s.gsub('_','-')}", description) do |v|
+  #     @options[flag] = true
+  #   end
+  # end
+  # opts.on("--dev", "Same as --no-cancel --no-cleanup --no-submit --no-deploy. Useful when you need to fine tune a custom engine, or are in development mode.") do |v|
+  #   @options[:no_cleanup] = true
+  #   @options[:no_cancel] = true
+  #   @options[:no_deploy] = true
+  #   @options[:no_submit] = true
+  # end
+  # opts.on("--name=", "Name for your experiment [default=#{Engine.defaults[:name]}].") do |v|
+  #   @options[:name] = v
+  # end
+  # opts.on("--log=", "Outputs log messages to the given file. Defaults to STDERR.") do |v|
+  #   original_logger_level = logger.level
+  #   logger = Logger.new(File.expand_path(v))
+  #   logger.level = original_logger_level
+  #   @options[:logger] = logger
+  # end
+  # opts.on("-v", "--verbose", "Run in verbose mode.") do |v|
+  #   @options[:logger].level = Logger::DEBUG
+  # end
+  # opts.on("--debug", "Run very verbosely (outputs HTTP calls).") do |v|
+  #   @options[:logger].level = Logger::DEBUG
+  #   @options[:verbose] = true
+  # end
+  opts.on("--version", "Display the version.") do |v|
+    puts Bfire::VERSION
+    exit(0)
+  end
+  opts.on_tail("-h", "--help", "Show this message.") do
+    puts opts
+    exit(0)
+  end
+
+end
+
+
+begin
+  option_parser.parse!
+  dsl = File.read(ARGV[0])
+
+  engine = Bfire::Engine.new
+  @options.each do |k,v|
+    engine.set(k, v)
+  end
+
+  engine.instance_eval(dsl)
+  engine.run!
+rescue OptionParser::ParseError => e
+  STDERR.puts "Error when parsing the options: #{e.message} (#{e.class.name})"
+  exit(1)
+end
+
