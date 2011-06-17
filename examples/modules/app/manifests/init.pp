@@ -8,6 +8,9 @@ class app {
 
   exec{"launch app":
     command => "/usr/bin/thin -d -l /var/log/thin.log -p 80 -R config.ru -c /tmp/app start",
-    require => Package["libsinatra-ruby"]
+    require => [
+      Package["libsinatra-ruby"],
+      File["/tmp/app"]
+    ]
   }
 }

@@ -10,7 +10,7 @@ class haproxy {
   }
   file{"/etc/default/haproxy":
     source => "puppet:///modules/haproxy/default",
-    requre => Package["haproxy"],
+    require => Package["haproxy"],
     notify => Service["haproxy"]
   }
   file{"/etc/rsyslog.d/haproxy.conf":

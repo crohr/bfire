@@ -9,7 +9,10 @@ class web {
 
   exec{"launch monitor app":
     command => "/usr/bin/thin -d -l /var/log/thin.log -p 8000 -R config.ru -c /tmp/monitor start",
-    require => Package["libsinatra-ruby"]
+    require => [
+      Package["libsinatra-ruby"],
+      File["/tmp/monitor"]
+    ]
   }
 
 }

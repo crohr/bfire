@@ -29,7 +29,7 @@ module Bfire
     end
 
     def run!
-      on(:error) {|group| group.engine.cleanup! }
+      on(:error) {|group| group.engine.trigger(:error) }
       on(:ready) {|group| group.provision! }
       merge_templates!
       engine.logger.debug "#{banner}Merged templates=#{templates.inspect}"

@@ -2,9 +2,9 @@ require 'sinatra'
 
 # Register with the server on launch
 # Not efficient but works
-cmd = 'source /etc/default/bonfire && curl http://$ROUTER_IP:8000/hosts -X POST -d "ip=$WAN_IP"'
-while system(cmd) != "OK"
-  puts "ROUTER not ready yet (cmd=#{cmd.inspect})."
+cmd = '. /etc/default/bonfire && curl -f http://$ROUTER_IP:8000/hosts -X POST -d "ip=$WAN_IP"'
+while system(cmd) && $?.exitstatus != 0
+  puts "ROUTER not ready yet (status=#{$?.exitstatus}, cmd=#{cmd.inspect})."
   sleep 3
 end
 

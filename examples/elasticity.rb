@@ -16,6 +16,14 @@ set :zabbix, "BonFIRE Zabbix Aggregator v2"
 set :wan, "BonFIRE WAN"
 
 # Define your networks
+network :public do |name, location|
+  case location['name']
+  when "fr-inria"
+    location.networks.find{|network| network['name'] =~ /Public Network/i}
+  else
+    nil
+  end
+end
 network :internal do |name, location|
   location.networks.find{|n| n['name'] == name.to_s} ||
   experiment.networks.submit(
@@ -29,7 +37,10 @@ group :web do
   at "fr-inria"
   instance_type 'small'
   deploy conf[:squeeze]
+  # Two interfaces for the publicly facing server
   connect_to conf[:wan]
+  connect_to :public
+
   provider :puppet,
     :classes => ['common', 'web'],
     :modules => "./modules"
@@ -101,6 +112,12 @@ group :app do
   # end
 end
 
+# All groups are "ready", launch an HTTP benchmarking tool against web's first
+# resource on public interface:
+on :ready do
+  system "ab -c 50 -n 10000 http://#{group(:web).first['nic'][1]['ip']}/delay?delay=1.5"
+end
+
 # group :app do
 #   at "de-hlrs"
 #   instance_type "small"
@@ -157,10 +174,6 @@ end
 #   end
 # end
 
-# # All groups are "ready"
-# on :ready do
-#   system "ab -c 50 -n 1000 http://#{group(:web).first['nic'][0]['ip']}/"
-# end
 #
 # # Experiment hooks / events
 # on :stopped do
