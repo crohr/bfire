@@ -1,13 +1,15 @@
 # $ bfire elasticity.rb
 #
-
 set :name, "BonFIRE elasticity experiment"
+set :description, "Whatever" # a UUID will be appended by the engine, so that
+# we can later find it again based on that UUID (for instance if we want to
+# rerun provisioning). --provision, --ignore-provisionning-errors, --no-cancel
 set :key, "~/.ssh/id_rsa"
 set :authorized_keys, "~/.ssh/authorized_keys"
 set :walltime, 3600
 set :gateway, "ssh.bonfire.grid5000.fr"
 set :user, ENV['USER']
-set :logging, INFO
+set :logging, DEBUG
 
 set :squeeze, "BonFIRE Debian Squeeze 2G v1"
 set :zabbix, "BonFIRE Zabbix Aggregator v2"
@@ -22,27 +24,60 @@ network :internal do |name, location|
   )
 end
 
-
-
+# Routing
 group :web do
   at "fr-inria"
-  at "de-hlrs" do
-    # connect_to :internal
-  end
   instance_type 'small'
   deploy conf[:squeeze]
   connect_to conf[:wan]
   provider :puppet,
-    :classes => ['haproxy'],
+    :classes => ['common', 'web'],
     :modules => "./modules"
+
   depends_on :eye do |g|
     {:aggregator_ip => g.take(:first)['nic'][0]['ip']}
   end
 
   # Register custom metrics
-  # register 'http_requests',
-  #   :period => 120,
-  #   :command => "/usr/bin/wc -l /var/log/apache2/access.log"
+  register 'active_requests',
+    :command => "/usr/bin/tail -n 1 /var/log/haproxy.log | cut -d ' ' -f 16 | cut -d '/' -f 1"
+
+  on :ready do |g|
+    g.each{|vm|
+      puts "#{vm['name']} - #{vm['nic'][0]['ip']}"
+    }
+  end
+  
+end
+
+# Monitoring
+group :eye do
+  at "fr-inria"
+  instance_type "small"
+  deploy conf[:zabbix]
+  connect_to conf[:wan]
+end
+
+# App
+group :app do
+  at "fr-inria"
+  # at "de-hlrs" do
+  #   # connect_to :internal
+  # end
+  instance_type "small"
+  connect_to conf[:wan]
+  deploy conf[:squeeze]
+  provider :puppet,
+    :classes => ['common', 'app'],
+    :modules => "./modules"
+  
+  depends_on :eye do |g|
+    {:aggregator_ip => g.take(:first)['nic'][0]['ip']}
+  end
+  
+  depends_on :web do |g|
+    {:router_ip => g.take(:first)['nic'][0]['ip']}
+  end
   
   # # Scaling
   # scale 2..10, {
@@ -57,37 +92,29 @@ group :web do
   #   :period => 2.min,
   #   :placement => :round_robin
   # }
-  on :ready do
-    group(:web).each{|compute|
-      puts "#{compute['name']} - #{compute['nic'][0]['ip']}"
-    }
-  end
-end
-#
-
-# Without location specified, chooses the first location which has the
-# requested image.
-group :eye do
-  at "de-hlrs"
-  instance_type "small"
-  deploy conf[:zabbix]
-  connect_to conf[:wan]
+  
+  # on :scaled_up do
+  #   ip = group(:eye).take(:first)['nic'][0]['ip']
+  #   session.put "http://#{ip}:8000/config", {
+  #     :hosts => group(:app).map{|vm| vm['nic'][0]['ip']}.join(",")
+  #   }
+  # end
 end
 
-group :app do
-  at "de-hlrs"
-  instance_type "small"
-  deploy conf[:squeeze]
-  connect_to conf[:wan]
-  depends_on :eye do |g|
-    {:server_ip => g.take(:first)['nic'][0]['ip']}
-  end
-  on :ready do
-    group(:app).each do |vm|
-      ssh(vm['nic'][0]['ip'], 'root') {|s| puts s.exec!("apt-get install curl -y")}
-    end
-  end
-end
+# group :app do
+#   at "de-hlrs"
+#   instance_type "small"
+#   deploy conf[:squeeze]
+#   connect_to conf[:wan]
+#   depends_on :eye do |g|
+#     {:server_ip => g.take(:first)['nic'][0]['ip']}
+#   end
+#   on :ready do
+#     group(:app).each do |vm|
+#       ssh(vm['nic'][0]['ip'], 'root') {|s| puts s.exec!("apt-get install curl -y")}
+#     end
+#   end
+# end
 
 # group :app
 #   # Location of resources
@@ -141,3 +168,7 @@ end
 #     vm.save_as("monitoring-data-#{vm['id']}")
 #   end
 # end
+
+
+# Without location specified, chooses the first location which has the
+# requested image.
