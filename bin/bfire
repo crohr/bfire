@@ -120,9 +120,20 @@ end
 
 begin
   option_parser.parse!
-  dsl = File.read(ARGV[0])
+  
+  filename = ARGV[0]
+  if filename.nil?
+    dir = File.dirname(Dir.pwd)
+    dsl = ""
+    while line = gets do
+      dsl << line
+    end
+  else
+    dir = File.dirname(filename)
+    dsl = File.read(filename)
+  end
 
-  engine = Bfire::Engine.new
+  engine = Bfire::Engine.new(:root => dir)
   @options.each do |k,v|
     engine.set(k, v)
   end

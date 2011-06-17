@@ -1,7 +1,13 @@
 require 'restfully'
 require 'restfully/media_type/application_vnd_bonfire_xml'
 require 'thread'
+
+require 'net/ssh'
+require 'net/scp'
+require 'net/sftp'
 require 'net/ssh/gateway'
+require 'net/ssh/multi'
+
 # Ruby Graph Library
 require 'rgl/adjacency'
 require 'rgl/topsort'
@@ -27,7 +33,8 @@ module Bfire
     # The Engine state (:created, :running, :cleaning, :done)
     attr_reader :state
 
-    def initialize
+    def initialize(opts = {})
+      @root = opts[:root] || Dir.pwd
       @properties = {}
       @vmgroups = {}
       @networks = {}
@@ -39,6 +46,10 @@ module Bfire
       @threads = []
       reset
     end
+    
+    def path_to(path)
+      File.expand_path(path, @root)
+    end
 
     def reset
       conf[:name] ||= "Bfire experiment"
@@ -48,6 +59,22 @@ module Bfire
       conf[:logging] ||= INFO
       conf[:user] ||= ENV['USER']
       conf[:ssh_max_attempts] ||= 3
+      public_key, private_key = keychain
+      conf[:key] ||= private_key
+      conf[:authorized_keys] ||= public_key
+    end
+    
+    def keychain
+      private_key = nil
+      public_key = Dir[File.expand_path("~/.ssh/*.pub")].find{|key|
+        private_key = key.gsub(/\.pub$/,"")
+        File.exist?(private_key)
+      }
+      if public_key.nil?
+        nil
+      else
+        [public_key, private_key]
+      end
     end
 
     # Returns the directed acyclic graph for the given group names, based on
@@ -110,7 +137,6 @@ module Bfire
         g = group(group_name)
         # in case that group was error'ed by the engine...
         next unless g.active?
-        g.on(:error) { cleanup! }
         Thread.new {
           Thread.current.abort_on_exception = true
           g.run!
@@ -268,8 +294,8 @@ module Bfire
       synchronize{
         return true if cleaning?
         @state = :cleaning
+        @threads.each(&:kill)
       }
-      @vmgroups.each{|name, g| g.trigger :error}
       logger.warn "#{banner}Cleaning up in 5 seconds. Hit CTRL-C now to keep your experiment running."
       sleep 5
       @experiment.delete unless @experiment.nil?
@@ -324,7 +350,7 @@ module Bfire
     # If option <tt>:multi</tt> is given and true, then an instance of Net::SSH::Multi::Session is yielded. See <http://net-ssh.github.com/multi/v1/api/index.html> for more information.
     def ssh(fqdn, username, options = {}, &block)
       raise ArgumentError, "You MUST provide a block when calling #ssh" if block.nil?
-      log = !!options[:log]
+      log = !!options.delete(:log)
       options[:timeout] ||= 10
       if options.has_key?(:password)
         options[:auth_methods] ||= ['keyboard-interactive']

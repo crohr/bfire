@@ -29,9 +29,11 @@ module Bfire
     end
 
     def run!
+      on(:error) {|group| group.engine.cleanup! }
+      on(:ready) {|group| group.provision! }
       merge_templates!
       engine.logger.debug "#{banner}Merged templates=#{templates.inspect}"
-      check_templates!
+      check!
       templates.each do |template_name, template|
         engine.logger.debug template.inspect
         engine.logger.info "#{banner}Launching deployment at #{template_name.inspect}..."
@@ -45,6 +47,30 @@ module Bfire
       engine.logger.debug e.backtrace.join("; ")
       @state = :error
       trigger :error
+    end
+    
+    def provision!
+      return true if provider.nil?
+      engine.logger.info "#{banner}Provisioning..."
+      if all?{|vm|
+        ip = vm['nic'][0]['ip']
+        engine.ssh(ip, 'root') {|s|
+          unless provider.install(s)
+            engine.logger.error "Failed to install provider on #{vm.inspect} (IP=#{ip})."
+            false
+          else
+            provider.run(s) do |stream|      
+              engine.logger.info "#{banner}[#{ip}] #{stream}"
+            end
+          end
+        }
+      }
+        trigger :provisioned
+        true
+      else
+        trigger :error
+        false
+      end
     end
 
     # Delegates every unknown method to the current Template, except #conf.
@@ -77,6 +103,15 @@ module Bfire
       @dependencies.push [group_name, block]
     end
     
+    # Define the provider to use to provision the compute resources
+    # (Puppet, Chef...).
+    # If <tt>selected_provider</tt> is nil, returns the current provider.
+    def provider(selected_provider = nil, options = {})
+      return @provider if selected_provider.nil?
+      options[:modules] = engine.path_to(options[:modules]) if options[:modules]
+      @provider = Provider::Puppet.new(options)
+    end
+
 
     # ===========
     # = Helpers =
@@ -139,13 +174,13 @@ module Bfire
         monitor
       end
     end
-    
+
     def ssh_accessible?
       all?{|compute|
         begin
           ip = compute['nic'][0]['ip']
           Timeout.timeout(30) do
-            engine.ssh(ip, 'root', :log => false) {|s| 
+            engine.ssh(ip, 'root', :log => false) {|s|
               s.exec!("hostname")
             }
           end
@@ -164,6 +199,13 @@ module Bfire
         engine.fetch_location(location)
       )
     end
+    
+    def check!
+      check_templates!
+      if provider && !provider.valid?
+        raise Error, "#{banner}#{provider.errors.map(&:inspect).join(", ")}"
+      end
+    end
 
     def check_templates!
       errors = []
@@ -175,6 +217,11 @@ module Bfire
 
     def merge_templates!
       default = @templates.delete(:default)
+      if engine.conf[:authorized_keys]
+        default.context :authorized_keys => File.read(
+          File.expand_path(engine.conf[:authorized_keys])
+        )
+      end
       if @templates.empty?
         t = template(:any)
         @templates[t.name] = t

@@ -1,5 +1,5 @@
 require 'bfire/pub_sub/publisher'
-require 'bfire/pub_sub/subscriber'
+require 'bfire/provider/puppet'
 require 'bfire/version'
 require 'bfire/engine'
 
