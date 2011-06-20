@@ -8,6 +8,10 @@ while system(cmd) && $?.exitstatus != 0
   sleep 3
 end
 
+get '/' do
+  "UP"
+end
+
 get '/delay' do
   delay = (params[:delay] || 0).to_f
   sleep delay

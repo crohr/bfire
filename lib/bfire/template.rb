@@ -1,13 +1,9 @@
-require 'uuidtools'
-
 module Bfire
   class Template
     # Return the list of nics defined.
     attr_reader :nics
     # Return the list of disks defined.
     attr_reader :disks
-    # Return the template location.
-    attr_reader :location
     # Return the template name (i.e. the location name).
     attr_reader :name
     # Return the properties defined for this template (instance_type, etc.).
@@ -21,17 +17,20 @@ module Bfire
     # Return the group this template belongs to.
     attr_reader :group
 
-    # Expects a Restfully::Resource object representing a BonFIRE location.
-    def initialize(group, location = nil)
+    def initialize(group, location_name = nil)
       @group = group
-      @location = location
-      @name = @location['name'] unless @location.nil?
+      @location_name = location_name
+      @name = location_name
       @nics = []
       @disks = []
       @errors = []
       @metrics = []
       @properties = {}
       @context = {}
+    end
+
+    def location
+      @location ||= group.engine.fetch_location(@location_name)
     end
 
     def context(opts = {})
@@ -119,7 +118,7 @@ module Bfire
     def to_h
       h = {}
       h.merge!(@properties)
-      h['name'] = "#{name}-compute-#{UUIDTools::UUID.random_create}"
+      h['name'] = "#{group.name}-#{name}-#{UUIDTools::UUID.random_create}"
       h['nic'] = nics
       h['disk'] = disks
       h['location'] = location

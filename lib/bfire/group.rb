@@ -6,31 +6,31 @@ module Bfire
     include PubSub::Publisher
 
     attr_reader :engine
-    attr_reader :hooks
     attr_reader :scale
     attr_reader :name
     attr_reader :dependencies
     attr_reader :templates
-    attr_accessor :state
+    attr_reader :computes
 
     def initialize(engine, name, options = {})
       @engine = engine
       @name = name
       @computes = []
       @options = {}
-      @hooks = {}
-      @scale = nil
-      @state = :created
       @listeners = {}
       @dependencies = []
 
       @templates = {:default => Template.new(self)}
       @current_template = template(:default)
+
+      raise Error, "Group name can only contain [a-zA-Z0-9] characters" if name !~ /[a-z0-9]+/i
+      
+      
+      on(:error) {|group| Thread.current.group.list.each(&:kill) }
+      on(:ready) {|group| group.provision! }
     end
 
     def run!
-      on(:error) {|group| group.engine.trigger(:error) }
-      on(:ready) {|group| group.provision! }
       merge_templates!
       engine.logger.debug "#{banner}Merged templates=#{templates.inspect}"
       check!
@@ -45,25 +45,28 @@ module Bfire
     rescue Exception => e
       engine.logger.error "#{banner}#{e.class.name}: #{e.message}"
       engine.logger.debug e.backtrace.join("; ")
-      @state = :error
       trigger :error
     end
-    
+
     def provision!
       return true if provider.nil?
       engine.logger.info "#{banner}Provisioning..."
       if all?{|vm|
+        provisioned = false
         ip = vm['nic'][0]['ip']
         engine.ssh(ip, 'root') {|s|
-          unless provider.install(s)
+          provisioned = unless provider.install(s)
             engine.logger.error "Failed to install provider on #{vm.inspect} (IP=#{ip})."
             false
           else
-            provider.run(s) do |stream|      
+            result = provider.run(s) do |stream|
               engine.logger.info "#{banner}[#{ip}] #{stream}"
             end
+            engine.logger.info "#{banner}RESULT=#{result.inspect}"
+            result
           end
         }
+        provisioned
       }
         trigger :provisioned
         true
@@ -102,7 +105,7 @@ module Bfire
     def depends_on(group_name, &block)
       @dependencies.push [group_name, block]
     end
-    
+
     # Define the provider to use to provision the compute resources
     # (Puppet, Chef...).
     # If <tt>selected_provider</tt> is nil, returns the current provider.
@@ -140,12 +143,8 @@ module Bfire
       end
     end
 
-    def active?
-      state != :error
-    end
-
     def inspect
-      "#<#{self.class.name}:0x#{object_id.to_s(16)} #{banner}(#{state})>"
+      "#<#{self.class.name}:0x#{object_id.to_s(16)} #{banner}>"
     end
 
     def reload
@@ -153,8 +152,8 @@ module Bfire
     end
 
     def monitor
-      return unless active?
-      engine.logger.info "#{banner}Monitoring group..."
+      return if error?
+      engine.logger.info "#{banner}Monitoring group... IPs: #{map{|vm| [vm['name'], vm['nic'].map{|n| n['ip']}.inspect].join("=")}.join("; ")}."
       reload
       if failed = find{|compute| compute['state'] == 'FAILED'}
         engine.logger.warn "#{banner}Compute #{failed.signature} is in a FAILED state. Aborting."
@@ -196,10 +195,10 @@ module Bfire
     def template(location = :default)
       @templates[location.to_sym] ||= Template.new(
         self,
-        engine.fetch_location(location)
+        location
       )
     end
-    
+
     def check!
       check_templates!
       if provider && !provider.valid?

@@ -24,8 +24,8 @@ defaults
 	clitimeout	50000
 	srvtimeout	50000
 
-listen	apps 0.0.0.0:10000
-	option	httpchk *
+listen	apps 0.0.0.0:80
+	option httpchk GET /
 	option httplog
 	log global
 	

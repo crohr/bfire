@@ -6,7 +6,7 @@ set :description, "Whatever" # a UUID will be appended by the engine, so that
 # rerun provisioning). --provision, --ignore-provisionning-errors, --no-cancel
 set :key, "~/.ssh/id_rsa"
 set :authorized_keys, "~/.ssh/authorized_keys"
-set :walltime, 3600
+set :walltime, 7200
 set :gateway, "ssh.bonfire.grid5000.fr"
 set :user, ENV['USER']
 set :logging, DEBUG
@@ -115,7 +115,10 @@ end
 # All groups are "ready", launch an HTTP benchmarking tool against web's first
 # resource on public interface:
 on :ready do
-  system "ab -c 50 -n 10000 http://#{group(:web).first['nic'][1]['ip']}/delay?delay=1.5"
+  cmd = "ab -c 5 -n 10000 http://#{group(:web).first['nic'].find{|n| n['ip'] =~ /^131/}['ip']}/delay?delay=0.5"
+  puts "***********"
+  puts cmd
+  system cmd
 end
 
 # group :app do

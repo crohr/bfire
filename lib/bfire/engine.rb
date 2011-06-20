@@ -1,6 +1,7 @@
 require 'restfully'
 require 'restfully/media_type/application_vnd_bonfire_xml'
 require 'thread'
+require 'thwait'
 
 require 'net/ssh'
 require 'net/scp'
@@ -24,14 +25,10 @@ module Bfire
     ERROR = Logger::ERROR
     UNKNOWN = Logger::UNKNOWN
 
-    # Contain the Hash of hooks defined on events:
-    attr_reader :hooks
     # Engine configuration hash:
     attr_reader :properties
     # A Restfully::Session object:
     attr_reader :session
-    # The Engine state (:created, :running, :cleaning, :done)
-    attr_reader :state
 
     def initialize(opts = {})
       @root = opts[:root] || Dir.pwd
@@ -40,13 +37,16 @@ module Bfire
       @networks = {}
       @storages = {}
       @locations = {}
-      @hooks = {}
       @mutex = Mutex.new
       @experiment = nil
-      @threads = []
+      
+      # The group of all master threads.
+      @tg_master = ThreadGroup.new
+      # The group of all threads related to a Group.
+      @tg_groups = ThreadGroup.new
       reset
     end
-    
+
     def path_to(path)
       File.expand_path(path, @root)
     end
@@ -63,7 +63,7 @@ module Bfire
       conf[:key] ||= private_key
       conf[:authorized_keys] ||= public_key
     end
-    
+
     def keychain
       private_key = nil
       public_key = Dir[File.expand_path("~/.ssh/*.pub")].find{|key|
@@ -98,35 +98,86 @@ module Bfire
     def run!
       on(:error) { cleanup! }
 
-      dg = dag(@vmgroups.keys)
-      topsort_iterator = dg.topsort_iterator
-      logger.info "#{banner}Launching groups in the following topological order: #{topsort_iterator.clone.to_a.inspect}."
+      @tg_master.add(Thread.new {
+        Thread.current.abort_on_exception = true
+        monitor
+      })
 
-      if launch_waiting_groups(topsort_iterator)
-        @vmgroups.each{|name, group|
-          @threads.push Thread.new {
-            Thread.current.abort_on_exception = true
-            group.monitor
-          }
-        }
-        @threads.push Thread.new {
-          Thread.current.abort_on_exception = true
-          monitor
-        }
-        # @threads.push Thread.new { monitor_experiment_metrics }
-        @threads.each(&:join)
+      if dev?
+        resuscitate!
+      else
+        deploy!
       end
+
+      ThreadsWait.all_waits(*@tg_master.list)
     rescue Exception => e
       logger.error "#{banner}#{e.class.name}: #{e.message}"
       logger.debug e.backtrace.join("; ")
       trigger :error
     end
 
+    def deploy!
+      dg = dag(@vmgroups.keys)
+      topsort_iterator = dg.topsort_iterator
+      logger.info "#{banner}Launching groups in the following topological order: #{topsort_iterator.clone.to_a.inspect}."
+
+      if launch_waiting_groups(topsort_iterator)
+        launch!
+      else
+        cleanup!
+      end
+    end
+    
+    def launch!
+      @vmgroups.each{|name, group|
+        @tg_groups.add(Thread.new {
+          Thread.current.abort_on_exception = true
+          group.monitor
+        })
+      }
+
+      ok = 0
+      ThreadsWait.all_waits(*@tg_groups.list) do |t|
+        logger.debug "#{banner}Thread #{t} finished with status=#{t.status.inspect}"
+        # http://apidock.com/ruby/Thread/status
+        if t.status.nil? || t.status == "aborting"
+          trigger :error
+        else
+          ok += 1
+        end
+      end
+      # after every thread has finished, experiment is ready.
+      if ok == @vmgroups.length
+        logger.info "#{banner}All groups are now READY."
+        trigger :ready
+      end
+    end
+
+    # Reloads vmgroups, networks and storages linked to an experiment.
+    def resuscitate!
+      experiment.networks.each do |network|
+        @networks[network['name']] = network
+      end
+      experiment.storages.each do |storage|
+        @storages[storage['name']] = storage
+      end
+      experiment.computes.each do |compute|
+        group_name = compute['name'].split("-")[0]
+        g = group(group_name)
+        if g.nil?
+          raise Error, "Group #{group_name} is not declared in the DSL."
+        else
+          g.computes.push(compute)
+        end
+      end
+      launch!
+    end
+
     # This launches the group in the topological order,
     # and waits for the end of that initialization procedure.
     def launch_waiting_groups(topsort_iterator)
       return true if topsort_iterator.at_end?
-      return false if cleaning?
+      return false if error?
 
       # ugly, but I don't know why the lib don't give access to it...
       waiting = topsort_iterator.instance_variable_get("@waiting")
@@ -136,7 +187,7 @@ module Bfire
       waiting.each do |group_name|
         g = group(group_name)
         # in case that group was error'ed by the engine...
-        next unless g.active?
+        next if g.error?
         Thread.new {
           Thread.current.abort_on_exception = true
           g.run!
@@ -263,7 +314,12 @@ module Bfire
     # Returns a Restfully::Resource object.
     def experiment
       @experiment ||= synchronize {
-        session.root.experiments.submit(
+        found = if conf[:dev]
+          session.root.experiments.find{|exp|
+            exp['status'] == 'running' && exp['name'] == conf[:name]
+          }
+        end
+        found || session.root.experiments.submit(
           :name => conf[:name],
           :description => conf[:description],
           :walltime => conf[:walltime]
@@ -290,17 +346,25 @@ module Bfire
     # =====================
 
     def cleanup!
-      # TODO: we may want a proper state machine here.
-      synchronize{
-        return true if cleaning?
-        @state = :cleaning
-        @threads.each(&:kill)
-      }
-      logger.warn "#{banner}Cleaning up in 5 seconds. Hit CTRL-C now to keep your experiment running."
-      sleep 5
-      @experiment.delete unless @experiment.nil?
+      unless @tg_groups.list.empty?
+        synchronize{
+          @tg_groups.list.each(&:kill)
+        }
+      end
+      if cleanup? && !@experiment.nil?
+        logger.warn "#{banner}Cleaning up in 5 seconds. Hit CTRL-C now to keep your experiment running."
+        sleep 5
+        @experiment.delete
+      else
+        logger.warn "#{banner}Not cleaning up experiment."
+      end
     end
 
+    def cleanup?
+      return false if dev? || conf[:no_cancel]
+      return false if conf[:no_cleanup] && !error?
+      true
+    end
 
     # ===================
     # = Helpers methods =
@@ -314,9 +378,8 @@ module Bfire
       "[BFIRE] "
     end
 
-    # Returns true if engine is cleaning up.
-    def cleaning?
-      state == :cleaning
+    def dev?
+      !!conf[:dev]
     end
 
     # Returns the logger for the engine.

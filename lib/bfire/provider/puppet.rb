@@ -19,7 +19,7 @@ module Bfire
       end
       
       def run(ssh_session)
-        ssh_session.sftp.mkdir!("/tmp/puppet")
+        ssh_session.exec!("rm -rf /tmp/puppet && mkdir -p /tmp/puppet")
         ssh_session.scp.upload!(
           StringIO.new(manifest("vm")),
           "/tmp/puppet/manifest.pp"

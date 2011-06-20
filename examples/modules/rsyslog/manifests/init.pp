@@ -3,7 +3,6 @@ class rsyslog {
     ensure => installed
   }
   service{"rsyslog":
-    name => "rsyslogd",
     ensure => running,
     require => Package["rsyslog"]
   }
