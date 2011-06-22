@@ -11,6 +11,7 @@ module Bfire
     # Return the list of metrics defined.
     attr_reader :metrics
     attr_reader :context
+    attr_reader :instances
 
     # Return an Array of error messages in case this template is not valid.
     attr_reader :errors
@@ -27,10 +28,15 @@ module Bfire
       @metrics = []
       @properties = {}
       @context = {}
+      @instances = []
     end
 
     def location
-      @location ||= group.engine.fetch_location(@location_name)
+      @location ||= if @location_name == :default
+        # noop
+      else
+        group.engine.fetch_location(@location_name)
+      end
     end
 
     def context(opts = {})
@@ -118,7 +124,7 @@ module Bfire
     def to_h
       h = {}
       h.merge!(@properties)
-      h['name'] = "#{group.name}-#{name}-#{UUIDTools::UUID.random_create}"
+      h['name'] = "#{group.name}--#{name}--#{UUIDTools::UUID.random_create}"
       h['nic'] = nics
       h['disk'] = disks
       h['location'] = location

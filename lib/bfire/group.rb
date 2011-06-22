@@ -1,4 +1,5 @@
 require 'bfire/template'
+require 'bfire/rule'
 
 module Bfire
   class Group
@@ -6,52 +7,61 @@ module Bfire
     include PubSub::Publisher
 
     attr_reader :engine
-    attr_reader :scale
     attr_reader :name
     attr_reader :dependencies
     attr_reader :templates
-    attr_reader :computes
 
     def initialize(engine, name, options = {})
       @engine = engine
       @name = name
-      @computes = []
       @options = {}
       @listeners = {}
       @dependencies = []
 
-      @templates = {:default => Template.new(self)}
-      @current_template = template(:default)
+      @templates = []
+      @default_template = Template.new(self, :default)
+      @current_template = @default_template
 
       raise Error, "Group name can only contain [a-zA-Z0-9] characters" if name !~ /[a-z0-9]+/i
-      
-      
-      on(:error) {|group| Thread.current.group.list.each(&:kill) }
-      on(:ready) {|group| group.provision! }
+
+      on(:error) {|group| Thread.current.group.list.each(&:kill); "KO"}
+      on(:ready) {|group| 
+        group.engine.logger.info "#{group.banner}All VMs are now ready: #{computes.map{|vm| 
+          [vm['name'], (vm['nic'] || []).map{|n| n['ip']}.inspect].join("=")
+        }.join("; ")}"
+      }
     end
 
-    def run!
+    def launch_initial_resources
       merge_templates!
       engine.logger.debug "#{banner}Merged templates=#{templates.inspect}"
       check!
-      templates.each do |template_name, template|
-        engine.logger.debug template.inspect
-        engine.logger.info "#{banner}Launching deployment at #{template_name.inspect}..."
-        # TODO: populate context with dependencies
-        # launch compute resources according to scale
-        @computes << engine.launch_compute(template, count=1)
+      if rule.launch_initial_resources
+        trigger :launched
+        true
+      else
+        trigger :error
+        false
       end
-      trigger :launched
     rescue Exception => e
       engine.logger.error "#{banner}#{e.class.name}: #{e.message}"
       engine.logger.debug e.backtrace.join("; ")
       trigger :error
     end
 
-    def provision!
+    def monitor
+      rule.manage(computes)
+      rule.monitor
+    rescue Exception => e
+      engine.logger.error "#{banner}#{e.class.name}: #{e.message}"
+      engine.logger.debug e.backtrace.join("; ")
+      trigger :error
+    end
+
+    def provision!(vms)
       return true if provider.nil?
       engine.logger.info "#{banner}Provisioning..."
-      if all?{|vm|
+      vms.all?{|vm|
         provisioned = false
         ip = vm['nic'][0]['ip']
         engine.ssh(ip, 'root') {|s|
@@ -62,18 +72,10 @@ module Bfire
             result = provider.run(s) do |stream|
               engine.logger.info "#{banner}[#{ip}] #{stream}"
             end
-            engine.logger.info "#{banner}RESULT=#{result.inspect}"
-            result
           end
         }
         provisioned
       }
-        trigger :provisioned
-        true
-      else
-        trigger :error
-        false
-      end
     end
 
     # Delegates every unknown method to the current Template, except #conf.
@@ -89,17 +91,20 @@ module Bfire
     # = Group-only methods =
     # ======================
 
+    def rule
+      @rule ||= Rule.new(self, :initial => 1, :range => 1..1)
+    end
+
+    # Defines the scaling rule for this group
     def scale(range, options = {})
-      @scale = options.merge(
-        :range => range
-      )
+      @rule = Rule.new(self, options.merge(:range => range))
     end
 
     def at(location, &block)
       t = template(location)
       @current_template = t
       instance_eval(&block) unless block.nil?
-      @current_template = template(:default)
+      @current_template = @default_template
     end
 
     def depends_on(group_name, &block)
@@ -127,19 +132,23 @@ module Bfire
     # Iterates over the collection of compute resources.
     # Required for the Enumerable module.
     def each(*args, &block)
-      @computes.each(*args, &block)
+      computes.each(*args, &block)
+    end
+
+    def computes
+      templates.map{|t| t.instances}.flatten
     end
 
     # Return the first <tt>how_many</tt> compute resources of the group.
     def take(how_many = :all)
       case how_many
       when :all
-        @computes
+        computes
       when :first
-        @computes[0]
+        computes[0]
       else
         raise ArgumentError, "You must pass :all, :first, or a Fixnum" unless how_many.kind_of?(Fixnum)
-        @computes.take(how_many)
+        computes.take(how_many)
       end
     end
 
@@ -151,31 +160,32 @@ module Bfire
       each(&:reload)
     end
 
-    def monitor
-      return if error?
-      engine.logger.info "#{banner}Monitoring group... IPs: #{map{|vm| [vm['name'], vm['nic'].map{|n| n['ip']}.inspect].join("=")}.join("; ")}."
-      reload
-      if failed = find{|compute| compute['state'] == 'FAILED'}
-        engine.logger.warn "#{banner}Compute #{failed.signature} is in a FAILED state. Aborting."
-        trigger :error
-      elsif all?{|compute| compute['state'] == 'ACTIVE'}
-        engine.logger.info "#{banner}All compute resources are ACTIVE"
-        if ssh_accessible?
-          engine.logger.info "#{banner}All compute resources are READY"
-          trigger :ready
-        else
-          sleep 20
-          monitor
-        end
-      else
-        engine.logger.info "#{banner}Some compute resources are still PENDING"
-        sleep 10
-        monitor
-      end
-    end
+    # def monitor
+    #   return if error?
+    #   engine.logger.info "#{banner}Monitoring group... IPs: #{map{|vm| [vm['name'], (vm['nic'] || []).map{|n| n['ip']}.inspect].join("=")}.join("; ")}."
+    #   reload
+    #   if failed = find{|compute| compute['state'] == 'FAILED'}
+    #     engine.logger.warn "#{banner}Compute #{failed.signature} is in a FAILED state. Aborting."
+    #     trigger :error
+    #   elsif all?{|compute| compute['state'] == 'ACTIVE'}
+    #     engine.logger.info "#{banner}All compute resources are ACTIVE"
+    #     if ssh_accessible?(computes)
+    #       engine.logger.info "#{banner}All compute resources are READY"
+    #       trigger :ready
+    #       rule.monitor
+    #     else
+    #       sleep 20
+    #       monitor
+    #     end
+    #   else
+    #     engine.logger.info "#{banner}Some compute resources are still PENDING"
+    #     sleep 10
+    #     monitor
+    #   end
+    # end
 
-    def ssh_accessible?
-      all?{|compute|
+    def ssh_accessible?(vms)
+      vms.all?{|compute|
         begin
           ip = compute['nic'][0]['ip']
           Timeout.timeout(30) do
@@ -191,14 +201,19 @@ module Bfire
       }
     end
 
-    protected
-    def template(location = :default)
-      @templates[location.to_sym] ||= Template.new(
-        self,
-        location
-      )
+    def template(location)
+      t = @templates.find{|t| t.name == location}
+      if t.nil?
+        t = Template.new(
+          self,
+          location
+        )
+        @templates.push(t)
+      end
+      t
     end
 
+    protected
     def check!
       check_templates!
       if provider && !provider.valid?
@@ -208,24 +223,23 @@ module Bfire
 
     def check_templates!
       errors = []
-      templates.each do |name, t|
-        t.valid? || errors.push({name => t.errors})
+      templates.each do |t|
+        t.valid? || errors.push({t.name => t.errors})
       end
       raise Error, "#{banner}#{errors.map(&:inspect).join(", ")}" unless errors.empty?
     end # def check_templates!
 
     def merge_templates!
-      default = @templates.delete(:default)
+      default = @default_template
       if engine.conf[:authorized_keys]
         default.context :authorized_keys => File.read(
           File.expand_path(engine.conf[:authorized_keys])
         )
       end
       if @templates.empty?
-        t = template(:any)
-        @templates[t.name] = t
+        @templates.push template(:any)
       end
-      templates.each{|name, t|
+      templates.each{|t|
         t.merge_defaults!(default).resolve!
       }
     end # def merge_templates!

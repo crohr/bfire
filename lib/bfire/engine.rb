@@ -14,6 +14,8 @@ require 'rgl/adjacency'
 require 'rgl/topsort'
 
 require 'bfire/group'
+require 'bfire/aggregator/zabbix'
+require 'bfire/metric'
 
 module Bfire
   class Engine
@@ -44,6 +46,7 @@ module Bfire
       @tg_master = ThreadGroup.new
       # The group of all threads related to a Group.
       @tg_groups = ThreadGroup.new
+
       reset
     end
 
@@ -103,10 +106,16 @@ module Bfire
         monitor
       })
 
-      if dev?
+      initialized = if dev? && experiment(conf[:name])
         resuscitate!
       else
         deploy!
+      end
+
+      if initialized
+        launch!
+      else
+        cleanup!
       end
 
       ThreadsWait.all_waits(*@tg_master.list)
@@ -121,57 +130,10 @@ module Bfire
       topsort_iterator = dg.topsort_iterator
       logger.info "#{banner}Launching groups in the following topological order: #{topsort_iterator.clone.to_a.inspect}."
 
-      if launch_waiting_groups(topsort_iterator)
-        launch!
-      else
-        cleanup!
-      end
+      launch_waiting_groups(topsort_iterator)
     end
     
-    def launch!
-      @vmgroups.each{|name, group|
-        @tg_groups.add(Thread.new {
-          Thread.current.abort_on_exception = true
-          group.monitor
-        })
-      }
-
-      ok = 0
-      ThreadsWait.all_waits(*@tg_groups.list) do |t|
-        logger.debug "#{banner}Thread #{t} finished with status=#{t.status.inspect}"
-        # http://apidock.com/ruby/Thread/status
-        if t.status.nil? || t.status == "aborting"
-          trigger :error
-        else
-          ok += 1
-        end
-      end
-      # after every thread has finished, experiment is ready.
-      if ok == @vmgroups.length
-        logger.info "#{banner}All groups are now READY."
-        trigger :ready
-      end
-    end
-
-    # Reloads vmgroups, networks and storages linked to an experiment.
-    def resuscitate!
-      experiment.networks.each do |network|
-        @networks[network['name']] = network
-      end
-      experiment.storages.each do |storage|
-        @storages[storage['name']] = storage
-      end
-      experiment.computes.each do |compute|
-        group_name = compute['name'].split("-")[0]
-        g = group(group_name)
-        if g.nil?
-          raise Error, "Group #{group_name} is not declared in the DSL."
-        else
-          g.computes.push(compute)
-        end
-      end
-      launch!
-    end
+    
 
     # This launches the group in the topological order,
     # and waits for the end of that initialization procedure.
@@ -190,11 +152,58 @@ module Bfire
         next if g.error?
         Thread.new {
           Thread.current.abort_on_exception = true
-          g.run!
+          g.launch_initial_resources
         }.join
       end
       waiting.length.times { topsort_iterator.forward }
       launch_waiting_groups(topsort_iterator)
+    end
+    
+    
+    # Launch a monitor for each group, and waits for their termination before
+    # saying "ready".
+    def launch!
+      @vmgroups.each{|name, group|
+        @tg_groups.add(Thread.new {
+          Thread.current.abort_on_exception = true
+          group.monitor
+        })
+      }
+      
+      until @vmgroups.all?{|(n,g)| g.triggered_events.include?(:ready)}
+        sleep 5
+      end
+      logger.info "#{banner}All groups are now READY."
+      trigger :ready
+      
+      ThreadsWait.all_waits(*@tg_groups.list) do |t|
+        v = t.value
+        logger.debug "#{banner}Thread #{t} finished with status=#{t.status.inspect}, value=#{v}"
+        # http://apidock.com/ruby/Thread/status
+        if t.status.nil? || t.status == "aborting" || (v && v == "KO")
+          trigger :error
+        end
+      end
+    end
+
+    # Reloads vmgroups, networks and storages linked to an experiment.
+    def resuscitate!
+      experiment.networks.each do |network|
+        @networks[network['name']] = network
+      end
+      experiment.storages.each do |storage|
+        @storages[storage['name']] = storage
+      end
+      experiment.computes.each do |compute|
+        group_name, template_name, guid = compute['name'].split("--")
+        g = group(group_name)
+        if g.nil?
+          raise Error, "Group #{group_name} is not declared in the DSL."
+        else
+          g.template(template_name).instances.push(compute)
+        end
+      end
+      true
     end
 
     # Define a new group (if block given), or return the group corresponding
@@ -306,25 +315,59 @@ module Bfire
     # <tt>template</tt>.
     def launch_compute(template, count = 1)
       h = template.to_h
-      logger.debug "#{banner}Launching compute with the following data: #{h.inspect}"
-      experiment.computes.submit(h)
+      count.times.map do |i|
+        logger.debug "#{banner}#{i+1}/#{count} - Launching compute with the following data: #{h.inspect}"
+        experiment.computes.submit(h)
+      end
     end
 
-    # Find or creates the experiments container.
-    # Returns a Restfully::Resource object.
-    def experiment
-      @experiment ||= synchronize {
-        found = if conf[:dev]
+    # If given a name, attempts to find an existing running experiment with
+    # the same name.
+    # If name is nil or omitted, creates a new experiment.
+    #
+    # Returns a Restfully::Resource object, or nil.
+    def experiment(name = nil)
+      synchronize {
+        @experiment ||= if name.nil?
+          session.root.experiments.submit(
+            :name => conf[:name],
+            :description => conf[:description],
+            :walltime => conf[:walltime]
+          )
+        else
           session.root.experiments.find{|exp|
-            exp['status'] == 'running' && exp['name'] == conf[:name]
+            exp['status'] == 'running' && exp['name'] == name
           }
         end
-        found || session.root.experiments.submit(
-          :name => conf[:name],
-          :description => conf[:description],
-          :walltime => conf[:walltime]
-        )
       }
+    end
+    
+    def metric(name, options = {})
+      p [:name, name, :options, options]
+      hosts = [options[:hosts]].flatten
+      @zabbix ||= Aggregator::Zabbix.new(session, experiment)
+      
+      hostname = "web-fr-inria-440843f6-1271-4b8a-bdb4-3da25fc93bb2-754"
+
+      items = @zabbix.request("item.get", {
+        :filter => {
+          "host" => hosts[0]['name'],
+          "key_" => name.to_s
+        },
+        "output" => "extend"
+      }).map{|i| i['itemid']}
+
+      p [:items, items]
+      # Most recent last
+      results = zabbix.request("history.get", {
+        "itemids" => items[0..1],
+        "output" => "extend",
+        "time_from" => Time.now.to_i-3600
+      })
+      
+      p [:results, results]
+
+      Metric.new(name, results)
     end
 
     # =========================
@@ -394,6 +437,10 @@ module Bfire
     # Synchronization primitive
     def synchronize(&block)
       @mutex.synchronize { block.call }
+    end
+    
+    def metrics()
+      monitor(rules)
     end
 
 
