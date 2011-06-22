@@ -94,6 +94,7 @@ end
 # All groups are "ready", launch an HTTP benchmarking tool against web's first
 # resource on public interface:
 on :ready do
+  sleep 5
   cmd = "ab -c 5 -n 10000 http://#{group(:web).first['nic'].find{|n| n['ip'] =~ /^131/}['ip']}/delay?delay=0.2"
   puts "***********"
   puts cmd

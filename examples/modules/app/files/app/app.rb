@@ -1,11 +1,19 @@
 require 'sinatra'
 
+def registered?
+  cmd = '. /etc/default/bonfire && curl -f http://$ROUTER_IP:8000/hosts -X POST -d "ip=$WAN_IP"'
+  system(cmd)
+  $?.exitstatus == 0
+rescue Exception => e
+  puts "Received #{e.class.name}: #{e.message}"
+  false
+end
+
 Thread.new{
   # Register with the server on launch
   # Not efficient but works
-  cmd = '. /etc/default/bonfire && curl -f http://$ROUTER_IP:8000/hosts -X POST -d "ip=$WAN_IP"'
-  while system(cmd) && $?.exitstatus != 0
-    puts "ROUTER not ready yet (status=#{$?.exitstatus}, cmd=#{cmd.inspect})."
+  until registered? do
+    puts "ROUTER not ready yet."
     sleep 3
   end
 }
