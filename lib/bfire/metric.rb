@@ -16,13 +16,21 @@ end
 module Bfire
   class Metric
 
-    def initialize(name, results)
+    def initialize(name, results, opts = {})
       @name = name
       @results = results
+      @opts = opts
     end
-    
+
     def values
-      @results.map{|r| r['value']}.reverse
+      @results.map{|r| 
+        case @opts[:type]
+        when :numeric
+          r['value'].to_f
+        else
+          r['value']
+        end
+      }.reverse
     end
   end
 end

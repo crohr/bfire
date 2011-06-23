@@ -30,11 +30,12 @@ group :web do
 
   # Register custom metrics
   register 'active_requests',
-    :command => "/usr/bin/tail -n 1 /var/log/haproxy.log | cut -d ' ' -f 16 | cut -d '/' -f 1"  
+    :command => "/usr/bin/tail -n 1 /var/log/haproxy.log | cut -d ' ' -f 16 | cut -d '/' -f 1",
+    :type => :numeric
 end
 
 # Monitoring
-group :eye do
+group :eye, :tag => "BonFIRE-monitor" do
   at "fr-inria"
   instance_type "small"
   deploy conf[:zabbix]
@@ -68,15 +69,17 @@ group :app do
     :up => lambda {|engine|
       m = engine.metric(
         "active_requests", 
-        :hosts => engine.group(:web).take(:first)
+        :hosts => engine.group(:web).take(:first),
+        :type => :numeric
       )
-      p [:m, m]
+      p [:m, m.values]
       m.values[0..15].avg > 5
     },
     :down => lambda {|engine|
       engine.metric(
         "active_requests", 
-        :hosts => engine.group(:web).take(:first)
+        :hosts => engine.group(:web).take(:first),
+        :type => :numeric
       ).values[0..15].avg < 5
     },
     :period => 60,

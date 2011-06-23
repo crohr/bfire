@@ -46,9 +46,11 @@ module Bfire
           end
         else
           template = sorted_templates.first
+          p [:template1, template]
           computes = group.engine.launch_compute(template)
           template.instances.push(*computes)
           new_computes.push(*computes)
+          p [:template2, template]
         end
       end
       new_computes
@@ -96,7 +98,6 @@ module Bfire
     end
 
     def scale_up?
-      p [:up, opts[:up]]
       opts[:up] && group.computes.length < opts[:range].end && opts[:up].call(group.engine)
     end
 

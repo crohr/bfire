@@ -124,7 +124,8 @@ module Bfire
     def to_h
       h = {}
       h.merge!(@properties)
-      h['name'] = "#{group.name}--#{name}--#{UUIDTools::UUID.random_create}"
+      h['name'] = "#{group.name}--#{name}--#{SecureRandom.hex(4)}"
+      h['name'] << "-#{group.tag}" if group.tag
       h['nic'] = nics
       h['disk'] = disks
       h['location'] = location

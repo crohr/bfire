@@ -177,10 +177,8 @@ module Bfire
       trigger :ready
       
       ThreadsWait.all_waits(*@tg_groups.list) do |t|
-        v = t.value
-        logger.debug "#{banner}Thread #{t} finished with status=#{t.status.inspect}, value=#{v}"
         # http://apidock.com/ruby/Thread/status
-        if t.status.nil? || t.status == "aborting" || (v && v == "KO")
+        if t.status.nil? || t.status == "aborting" || t[:ko]
           trigger :error
         end
       end
@@ -200,6 +198,8 @@ module Bfire
         if g.nil?
           raise Error, "Group #{group_name} is not declared in the DSL."
         else
+          g.merge_templates!
+          g.check!
           g.template(template_name).instances.push(compute)
         end
       end
@@ -213,7 +213,7 @@ module Bfire
         @vmgroups[name.to_sym] ||= Group.new(
           self,
           name.to_sym,
-          options
+          options.symbolize_keys
         )
         @vmgroups[name.to_sym].instance_eval(&block)
       else
@@ -344,14 +344,14 @@ module Bfire
     
     def metric(name, options = {})
       p [:name, name, :options, options]
-      hosts = [options[:hosts]].flatten
+      hosts = [options.delete(:hosts) || []].flatten.map{|h|
+        [h['name'], h['id']].join("-")
+      }
       @zabbix ||= Aggregator::Zabbix.new(session, experiment)
-      
-      hostname = "web-fr-inria-440843f6-1271-4b8a-bdb4-3da25fc93bb2-754"
 
       items = @zabbix.request("item.get", {
         :filter => {
-          "host" => hosts[0]['name'],
+          "host" => hosts[0],
           "key_" => name.to_s
         },
         "output" => "extend"
@@ -359,15 +359,19 @@ module Bfire
 
       p [:items, items]
       # Most recent last
-      results = zabbix.request("history.get", {
+      now = Time.now.to_i
+      results = @zabbix.request("history.get", {
         "itemids" => items[0..1],
+        # FIX once we can correctly specify metric type
+        # "history" => 1,
         "output" => "extend",
-        "time_from" => Time.now.to_i-3600
+        "time_from" => now-3600,
+        "time_till" => now
       })
       
       p [:results, results]
 
-      Metric.new(name, results)
+      Metric.new(name, results, options)
     end
 
     # =========================
@@ -438,11 +442,6 @@ module Bfire
     def synchronize(&block)
       @mutex.synchronize { block.call }
     end
-    
-    def metrics()
-      monitor(rules)
-    end
-
 
     # ===============
     # = SSH methods =

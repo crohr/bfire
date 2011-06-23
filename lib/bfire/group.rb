@@ -10,11 +10,15 @@ module Bfire
     attr_reader :name
     attr_reader :dependencies
     attr_reader :templates
+    # A free-form text tag to add to every compute name of this group.
+    attr_reader :tag
 
     def initialize(engine, name, options = {})
       @engine = engine
       @name = name
-      @options = {}
+      @tag = options.delete(:tag)
+      raise Error, "Tag name can't contain two or more consecutive dashes" if @tag && @tag =~ /-{2,}/
+      @options = options
       @listeners = {}
       @dependencies = []
 
@@ -24,15 +28,20 @@ module Bfire
 
       raise Error, "Group name can only contain [a-zA-Z0-9] characters" if name !~ /[a-z0-9]+/i
 
-      on(:error) {|group| Thread.current.group.list.each(&:kill); "KO"}
-      on(:ready) {|group| 
-        group.engine.logger.info "#{group.banner}All VMs are now ready: #{computes.map{|vm| 
+      on(:error) {|group| Thread.current.group.list.each{|t|
+          t[:ko] = true
+          t.kill
+        }
+      }
+      on(:ready) {|group|
+        group.engine.logger.info "#{group.banner}All VMs are now ready: #{computes.map{|vm|
           [vm['name'], (vm['nic'] || []).map{|n| n['ip']}.inspect].join("=")
         }.join("; ")}"
       }
     end
 
     def launch_initial_resources
+
       merge_templates!
       engine.logger.debug "#{banner}Merged templates=#{templates.inspect}"
       check!
@@ -213,21 +222,12 @@ module Bfire
       t
     end
 
-    protected
     def check!
       check_templates!
       if provider && !provider.valid?
         raise Error, "#{banner}#{provider.errors.map(&:inspect).join(", ")}"
       end
     end
-
-    def check_templates!
-      errors = []
-      templates.each do |t|
-        t.valid? || errors.push({t.name => t.errors})
-      end
-      raise Error, "#{banner}#{errors.map(&:inspect).join(", ")}" unless errors.empty?
-    end # def check_templates!
 
     def merge_templates!
       default = @default_template
@@ -243,5 +243,16 @@ module Bfire
         t.merge_defaults!(default).resolve!
       }
     end # def merge_templates!
+
+    protected
+
+    def check_templates!
+      errors = []
+      templates.each do |t|
+        t.valid? || errors.push({t.name => t.errors})
+      end
+      raise Error, "#{banner}#{errors.map(&:inspect).join(", ")}" unless errors.empty?
+    end # def check_templates!
+
   end
 end
