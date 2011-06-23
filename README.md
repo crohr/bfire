@@ -1,11 +1,29 @@
 # bfire
 A powerful DSL to launch experiments on BonFIRE.
 
+What this does for you:
+
+* Nice DSL to declare the resources you want;
+* Groups compute resources into... groups;
+* Supports dependencies between groups, and builds the dependency graph to launch groups in the right order;
+* Provision software on compute resources using [Puppet](http://www.puppetlabs.com/);
+* Provides hooks after each deployment step so that you can launch your own commands;
+* Abstracts SSH connections, including connections going through gateways;
+* Registers metrics into Zabbix;
+* Scale up or scale down groups based on any condition you want, including metric values.
+
+This is very much a work in progress, and a proof of concept. 
+The code is definitely not something you want to look at.
+
 ## Usage
 
     $ bfire my-experiment.rb
 
-`my-experiment.rb`:
+Or, if you are developing in the project's directory:
+
+    $ ruby -I lib/ bin/bfire my-experiment.rb
+
+Content of `my-experiment.rb`:
 
     set :name, "Simple Experiment using bfire"
     set :walltime, 3600
@@ -63,7 +81,8 @@ A powerful DSL to launch experiments on BonFIRE.
         }
       end
     end
-    
+
+See the `examples` directory for up to date examples.
 
 ## Authors
 * Cyril Rohr <cyril.rohr@inria.fr>
