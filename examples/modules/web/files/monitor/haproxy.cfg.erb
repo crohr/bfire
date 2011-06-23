@@ -26,6 +26,7 @@ defaults
 
 listen	apps 0.0.0.0:80
   maxconn 5
+  stats uri /stats
 	option httpchk GET /
 	option httplog
 	log global

@@ -4,7 +4,7 @@
 set :name, "BonFIRE elasticity experiment"
 set :key, "~/.ssh/id_rsa"
 set :authorized_keys, "~/.ssh/authorized_keys"
-set :walltime, 1800
+set :walltime, 3600
 set :gateway, "ssh.bonfire.grid5000.fr"
 set :user, ENV['USER']
 set :logging, INFO
@@ -41,7 +41,7 @@ group :web do
 
   # Register custom metrics
   register 'active_requests',
-    :command => "/usr/bin/tail -n 1 /var/log/haproxy.log | cut -d ' ' -f 16 | cut -d '/' -f 1",
+    :command => "/usr/bin/tail -n 1 /var/log/haproxy.log | cut -d ' ' -f 16 | cut -d '/' -f 3",
     :type => :numeric
 end
 
@@ -71,9 +71,9 @@ group :app do
       values = engine.metric("active_requests",
         :hosts => engine.group(:web).take(:first),
         :type => :numeric
-      ).values[0..5]
+      ).values[0..3]
       puts "Metric values: #{values.inspect}, avg=#{values.avg.inspect}"
-      values.avg > 3
+      values.avg >= 3.3
     },
     :down => lambda {|engine|
       engine.metric("active_requests",
