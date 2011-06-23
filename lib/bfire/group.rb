@@ -169,30 +169,6 @@ module Bfire
       each(&:reload)
     end
 
-    # def monitor
-    #   return if error?
-    #   engine.logger.info "#{banner}Monitoring group... IPs: #{map{|vm| [vm['name'], (vm['nic'] || []).map{|n| n['ip']}.inspect].join("=")}.join("; ")}."
-    #   reload
-    #   if failed = find{|compute| compute['state'] == 'FAILED'}
-    #     engine.logger.warn "#{banner}Compute #{failed.signature} is in a FAILED state. Aborting."
-    #     trigger :error
-    #   elsif all?{|compute| compute['state'] == 'ACTIVE'}
-    #     engine.logger.info "#{banner}All compute resources are ACTIVE"
-    #     if ssh_accessible?(computes)
-    #       engine.logger.info "#{banner}All compute resources are READY"
-    #       trigger :ready
-    #       rule.monitor
-    #     else
-    #       sleep 20
-    #       monitor
-    #     end
-    #   else
-    #     engine.logger.info "#{banner}Some compute resources are still PENDING"
-    #     sleep 10
-    #     monitor
-    #   end
-    # end
-
     def ssh_accessible?(vms)
       vms.all?{|compute|
         begin

@@ -38,19 +38,21 @@ module Bfire
       count.times do |i|
         sorted_templates = group.templates.sort_by{|t| t.instances.length}
         if up_or_down == :down
-          group.engine.logger.info "#{group.banner}Scaling down..."
-          vm_to_delete = sorted_templates.last.instances.choice
-          group.engine.logger.info "#{group.banner}Removing compute #{vm_to_delete.signature}..."
-          if vm_to_delete.delete
-            sorted_templates.last.instances.delete vm_to_delete
+          vm_to_delete = sorted_templates.last.instances[0]
+          if vm_to_delete.nil?
+            group.engine.logger.warn "#{group.banner}No resource to delete!"
+          else
+            group.engine.logger.info "#{group.banner}Removing compute #{vm_to_delete.signature}..."
+            if vm_to_delete.delete
+              sorted_templates.last.instances.delete vm_to_delete
+              group.trigger :scaled_down
+            end
           end
         else
           template = sorted_templates.first
-          p [:template1, template]
           computes = group.engine.launch_compute(template)
           template.instances.push(*computes)
           new_computes.push(*computes)
-          p [:template2, template]
         end
       end
       new_computes
@@ -63,9 +65,9 @@ module Bfire
       if failed = vms.find{|compute| compute['state'] == 'FAILED'}
         group.engine.logger.warn "#{group.banner}Compute #{failed.signature} is in a FAILED state."
         if group.triggered_events.include?(:ready)
-          trigger :error
+          group.trigger :error
         else
-          trigger :scale_error
+          group.trigger :scale_error
         end
       elsif vms.all?{|compute| compute['state'] == 'ACTIVE'}
         group.engine.logger.info "#{group.banner}All compute resources are ACTIVE"

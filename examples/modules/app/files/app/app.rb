@@ -18,7 +18,6 @@ Thread.new{
   end
 }
 
-
 get '/' do
   "UP"
 end

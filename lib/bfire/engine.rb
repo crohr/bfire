@@ -100,6 +100,7 @@ module Bfire
     # and launch a thread to monitor experiment status.
     def run!
       on(:error) { cleanup! }
+      on(:terminated) { cleanup! }
 
       @tg_master.add(Thread.new {
         Thread.current.abort_on_exception = true
@@ -198,10 +199,12 @@ module Bfire
         if g.nil?
           raise Error, "Group #{group_name} is not declared in the DSL."
         else
-          g.merge_templates!
-          g.check!
           g.template(template_name).instances.push(compute)
         end
+      end
+      @vmgroups.each do |name, vmgroup|
+        vmgroup.merge_templates!
+        vmgroup.check!
       end
       true
     end
@@ -343,7 +346,6 @@ module Bfire
     end
     
     def metric(name, options = {})
-      p [:name, name, :options, options]
       hosts = [options.delete(:hosts) || []].flatten.map{|h|
         [h['name'], h['id']].join("-")
       }
@@ -357,19 +359,16 @@ module Bfire
         "output" => "extend"
       }).map{|i| i['itemid']}
 
-      p [:items, items]
       # Most recent last
       now = Time.now.to_i
       results = @zabbix.request("history.get", {
         "itemids" => items[0..1],
         # FIX once we can correctly specify metric type
-        # "history" => 1,
+        "history" => 1, # STRING
         "output" => "extend",
         "time_from" => now-3600,
         "time_till" => now
       })
-      
-      p [:results, results]
 
       Metric.new(name, results, options)
     end

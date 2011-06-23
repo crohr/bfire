@@ -21,7 +21,7 @@ helpers do
   end
   
   def haproxy_restart
-    system "/etc/init.d/haproxy restart"
+    system "/etc/init.d/haproxy reload"
   end
   
   def hosts
