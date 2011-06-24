@@ -41,7 +41,7 @@ module Bfire
       @locations = {}
       @mutex = Mutex.new
       @experiment = nil
-      
+
       # The group of all master threads.
       @tg_master = ThreadGroup.new
       # The group of all threads related to a Group.
@@ -133,8 +133,8 @@ module Bfire
 
       launch_waiting_groups(topsort_iterator)
     end
-    
-    
+
+
 
     # This launches the group in the topological order,
     # and waits for the end of that initialization procedure.
@@ -159,8 +159,8 @@ module Bfire
       waiting.length.times { topsort_iterator.forward }
       launch_waiting_groups(topsort_iterator)
     end
-    
-    
+
+
     # Launch a monitor for each group, and waits for their termination before
     # saying "ready".
     def launch!
@@ -170,13 +170,14 @@ module Bfire
           group.monitor
         })
       }
-      
+
       until @vmgroups.all?{|(n,g)| g.triggered_events.include?(:ready)}
         sleep 5
       end
-      logger.info "#{banner}All groups are now READY."
+
+      logger.info "#{banner}All groups are now READY: #{groups.inspect}."
+
       trigger :ready
-      
       ThreadsWait.all_waits(*@tg_groups.list) do |t|
         # http://apidock.com/ruby/Thread/status
         if t.status.nil? || t.status == "aborting" || t[:ko]
@@ -344,7 +345,7 @@ module Bfire
         end
       }
     end
-    
+
     def metric(name, options = {})
       hosts = [options.delete(:hosts) || []].flatten.map{|h|
         [h['name'], h['id']].join("-")
@@ -418,6 +419,10 @@ module Bfire
 
     def engine
       self
+    end
+
+    def groups
+      @vmgroups
     end
 
     def banner

@@ -111,7 +111,7 @@ begin
   @options.each do |k,v|
     engine.set(k, v)
   end
-  p engine.conf
+
   engine.run!
 rescue OptionParser::ParseError => e
   STDERR.puts "Error when parsing the options: #{e.message} (#{e.class.name})"

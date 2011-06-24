@@ -40,8 +40,8 @@ group :web do
   end
 
   # Register custom metrics
-  register 'active_requests',
-    :command => "/usr/bin/tail -n 1 /var/log/haproxy.log | cut -d ' ' -f 16 | cut -d '/' -f 3",
+  register 'connection_waiting_time',
+    :command => "/usr/bin/tail -n 1 /var/log/haproxy.log | cut -d ' ' -f 10 | cut -d '/' -f 2",
     :type => :numeric
 end
 
@@ -68,20 +68,20 @@ group :app do
   scale 1..10, {
     :initial => 2,
     :up => lambda {|engine|
-      values = engine.metric("active_requests",
+      values = engine.metric("connection_waiting_time",
         :hosts => engine.group(:web).take(:first),
         :type => :numeric
       ).values[0..3]
       puts "Metric values: #{values.inspect}, avg=#{values.avg.inspect}"
-      values.avg >= 3.3
+      values.avg >= 600
     },
     :down => lambda {|engine|
-      engine.metric("active_requests",
+      engine.metric("connection_waiting_time",
         :hosts => engine.group(:web).take(:first),
         :type => :numeric
-      ).values[0..10].avg < 2
+      ).values[0..5].avg < 200
     },
-    :period => 60,
+    :period => 90,
     :placement => :round_robin
   }
 end
@@ -90,7 +90,7 @@ end
 # resource on public interface:
 on :ready do
   sleep 20
-  cmd = "ab -r -c 5 -n 10000 http://#{group(:web).first['nic'].find{|n| n['ip'] =~ /^131/}['ip']}/delay?delay=0.3"
+  cmd = "ab -r -c 8 -n 10000 http://#{group(:web).first['nic'].find{|n| n['ip'] =~ /^131/}['ip']}/delay?delay=0.3"
   puts "***********"
   puts cmd
   system cmd

@@ -25,7 +25,7 @@ defaults
 	srvtimeout	50000
 
 listen	apps 0.0.0.0:80
-  maxconn 5
+
   stats uri /stats
 	option httpchk GET /
 	option httplog
@@ -33,7 +33,7 @@ listen	apps 0.0.0.0:80
 	
 	balance	roundrobin
 	<% hosts.each_with_index do |host, index| %>
-	server	inst<%= index %> <%= host %>:80 check inter 3000 fall 5 rise 1
+	server	inst<%= index %> <%= host %>:80 minconn 1 maxconn 3 check inter 3000 fall 5 rise 1
 	<% end %>
 	srvtimeout	20000
 

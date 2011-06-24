@@ -72,7 +72,7 @@ module Bfire
       elsif vms.all?{|compute| compute['state'] == 'ACTIVE'}
         group.engine.logger.info "#{group.banner}All compute resources are ACTIVE"
         if group.ssh_accessible?(vms)
-          group.engine.logger.info "#{group.banner}All compute resources are READY"
+          group.engine.logger.info "#{group.banner}All compute resources are SSH-able"
           provisioned = group.provision!(vms)
           if group.triggered_events.include?(:ready)
             if provisioned
@@ -106,20 +106,5 @@ module Bfire
     def scale_down?
       opts[:down] && group.computes.length > opts[:range].begin && opts[:down].call(group.engine)
     end
-
-    # def triggered?
-    #   if opts[:up].call()
-    #   engine.zabbix("item.get", {
-    #     :filter => {
-    #       "host" => ,
-    #       "key_" =>
-    #     },
-    #     "output" => "extend"
-    #   })
-    # end
-    #
-    # def zabbix(action, params)
-    #   group.engine.zabbix(action, params)
-    # end
   end
 end

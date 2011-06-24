@@ -34,14 +34,13 @@ module Bfire
         }
       }
       on(:ready) {|group|
-        group.engine.logger.info "#{group.banner}All VMs are now ready: #{computes.map{|vm|
+        group.engine.logger.info "#{group.banner}All VMs are now READY: #{computes.map{|vm|
           [vm['name'], (vm['nic'] || []).map{|n| n['ip']}.inspect].join("=")
         }.join("; ")}"
       }
     end
 
     def launch_initial_resources
-
       merge_templates!
       engine.logger.debug "#{banner}Merged templates=#{templates.inspect}"
       check!
@@ -162,7 +161,15 @@ module Bfire
     end
 
     def inspect
-      "#<#{self.class.name}:0x#{object_id.to_s(16)} #{banner}>"
+      s = "#<#{self.class.name}:0x#{object_id.to_s(16)}"
+      s << " #{banner}" if banner
+      s << "VMs: "
+      s << computes.map{|vm|
+        [vm['name'].inspect, (vm['nic'] || []).map{|n|
+          n['ip']
+        }.inspect].join("=")
+      }.join("; ")
+      s << ">"
     end
 
     def reload
