@@ -21,6 +21,8 @@ The code is definitely not something you want to look at.
 
 Or, if you are developing in the project's directory:
 
+    $ git clone git://github.com/crohr/bfire.git
+    $ cd bfire/
     $ ruby -I lib/ bin/bfire my-experiment.rb
 
 Content of `my-experiment.rb`:
