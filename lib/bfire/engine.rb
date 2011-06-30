@@ -99,6 +99,9 @@ module Bfire
     # Launch procedure. Will execute each group in a separate thread,
     # and launch a thread to monitor experiment status.
     def run!
+      # call #session to initiate Restfully::Session object outside of threads
+      logger.info "#{banner}Using bonfire-api/#{session.root['version']}"
+      
       on(:error) { cleanup! }
       on(:terminated) { cleanup! }
 
@@ -112,6 +115,8 @@ module Bfire
       else
         deploy!
       end
+      
+      experiment.update(:status => "running")
 
       if initialized
         launch!
@@ -133,8 +138,6 @@ module Bfire
 
       launch_waiting_groups(topsort_iterator)
     end
-
-
 
     # This launches the group in the topological order,
     # and waits for the end of that initialization procedure.
@@ -246,6 +249,7 @@ module Bfire
       sname = name.to_s
       key = [location['name'], sname].join(".")
       logger.debug "#{banner}Looking for network #{name.inspect} at #{location['name'].inspect}. key=#{key.inspect}"
+      exp = experiment
       synchronize {
         # Duplicate general networks if present
         @networks[key] = @networks[sname].clone if @networks[sname]
@@ -254,7 +258,7 @@ module Bfire
         when Restfully::Resource
           @networks[key]
         when Proc
-          @networks[key].call(name, location)
+          @networks[key].call(name, location, exp)
         else
           location.networks.find{|n|
             if name.kind_of?(Regexp)
@@ -277,6 +281,7 @@ module Bfire
       sname = name.to_s
       key = [location['name'], sname].join(".")
       logger.debug "#{banner}Looking for storage #{name.inspect} at #{location['name'].inspect}. key=#{key.inspect}"
+      exp = experiment
       synchronize {
         # Duplicate general storages if present
         @storages[key] = @storages[sname].clone if @storages[sname]
@@ -285,7 +290,7 @@ module Bfire
         when Restfully::Resource
           @storages[key]
         when Proc
-          @storages[key].call(name, location)
+          @storages[key].call(name, location, exp)
         else
           location.storages.find{|n|
             if name.kind_of?(Regexp)
@@ -331,15 +336,17 @@ module Bfire
     #
     # Returns a Restfully::Resource object, or nil.
     def experiment(name = nil)
+      connection = session
       synchronize {
         @experiment ||= if name.nil?
-          session.root.experiments.submit(
+          connection.root.experiments.submit(
             :name => conf[:name],
             :description => conf[:description],
-            :walltime => conf[:walltime]
+            :walltime => conf[:walltime],
+            :status => "waiting"
           )
         else
-          session.root.experiments.find{|exp|
+          connection.root.experiments.find{|exp|
             exp['status'] == 'running' && exp['name'] == name
           }
         end
