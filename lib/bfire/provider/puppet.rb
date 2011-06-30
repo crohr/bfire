@@ -14,8 +14,9 @@ module Bfire
       end
 
       def install(ssh_session)
-        ssh_session.exec!("DEBIAN_FRONTEND=noninteractive apt-get install curl puppet -y")
-        !ssh_session.exec!("which puppet").empty?
+        res = ssh_session.exec!("apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install curl puppet -y")
+        res = ssh_session.exec!("which puppet")
+        !res.nil? && !res.empty?
       end
       
       def run(ssh_session)
