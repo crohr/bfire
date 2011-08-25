@@ -6,8 +6,8 @@ set :gateway, "ssh.bonfire.grid5000.fr"
 set :user, ENV['USER']
 set :logging, INFO
 
-set :squeeze, "BonFIRE Debian Squeeze 2G v1"
-set :zabbix, "BonFIRE Zabbix Aggregator v2"
+set :squeeze, "BonFIRE Debian Squeeze v4"
+set :zabbix, "BonFIRE Zabbix Aggregator v4"
 set :wan, "BonFIRE WAN"
 
 group :monitor do

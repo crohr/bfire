@@ -1,9 +1,8 @@
-require 'uuidtools'
+require 'backports'
 
-require 'bfire/pub_sub/publisher'
-require 'bfire/provider/puppet'
 require 'bfire/version'
-require 'bfire/engine'
+require 'bfire/campaign'
+
 
 module Bfire
   class Error < StandardError; end

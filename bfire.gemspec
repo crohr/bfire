@@ -17,6 +17,7 @@ Gem::Specification.new do |s|
   s.summary                   = "Launch experiments on BonFIRE"
   s.description               = "Launch experiments on BonFIRE"
 
+  s.add_dependency('girl_friday')
   s.add_dependency('restfully')
   s.add_dependency('libxml-ruby')
   s.add_dependency('backports')

@@ -1,5 +1,3 @@
-# $ bfire elasticity.rb
-
 # Define global properties
 set :name, "BonFIRE elasticity experiment"
 set :key, "~/.ssh/id_rsa"
@@ -12,7 +10,6 @@ set :logging, INFO
 set :squeeze, "BonFIRE Debian Squeeze 2G v1"
 set :zabbix, "BonFIRE Zabbix Aggregator v2"
 set :wan, "BonFIRE WAN"
-
 
 # Monitoring
 group :eye, :tag => "BonFIRE-monitor" do
@@ -91,8 +88,6 @@ end
 on :ready do
   sleep 20
   cmd = "ab -r -c 8 -n 10000 http://#{group(:web).first['nic'].find{|n| n['ip'] =~ /^131/}['ip']}/delay?delay=0.3"
-  puts "***********"
-  puts cmd
   system cmd
 end
 
