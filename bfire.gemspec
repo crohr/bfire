@@ -18,13 +18,8 @@ Gem::Specification.new do |s|
   s.description               = "Launch experiments on BonFIRE"
 
   s.add_dependency('girl_friday')
-  s.add_dependency('restfully')
-  s.add_dependency('libxml-ruby')
+  s.add_dependency('restfully-addons')
   s.add_dependency('backports')
-  s.add_dependency('net-sftp')
-  s.add_dependency('net-scp')
-  s.add_dependency('net-ssh-multi')
-  s.add_dependency('net-ssh-gateway')
   s.add_dependency('rgl')
   s.add_dependency('uuidtools')
   
