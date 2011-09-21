@@ -34,7 +34,7 @@ Gem::Specification.new do |s|
   s.add_development_dependency('autotest')
   s.add_development_dependency('autotest-growl')
 
-  s.files = Dir.glob("{bin,lib,spec,examples}/**/*") + %w(Rakefile LICENSE README.md)
+  s.files = Dir.glob("{bin,lib,spec,examples}/**/*") + %w(LICENSE README.md)
 
   s.test_files = Dir.glob("spec/**/*")
 
