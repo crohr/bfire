@@ -29,7 +29,7 @@ module Bfire
         ssh_session.exec!(
           "puppet --modulepath /tmp/puppet/modules /tmp/puppet/manifest.pp"
         ) do |ch, stream, data|
-          yield "[#{stream.to_s.upcase}] #{data}"
+          yield "[#{stream.to_s.upcase}] #{data.chomp}"
         end
         true
       end
