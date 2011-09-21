@@ -15,6 +15,9 @@ What this does for you:
 This is very much a work in progress, and a proof of concept. 
 The code is definitely not something you want to look at.
 
+A screencast is available at
+<http://bonfire-dev.gforge.inria.fr/public/bfire.mov>.
+
 ## Usage
 
     $ bfire my-experiment.rb
