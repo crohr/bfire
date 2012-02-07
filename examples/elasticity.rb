@@ -9,8 +9,8 @@ set :gateway, "ssh.bonfire.grid5000.fr"
 set :user, ENV['USER']
 set :logging, INFO
 
-set :squeeze, "BonFIRE Debian Squeeze 2G v2"
-set :zabbix, "BonFIRE Zabbix Aggregator v4"
+set :squeeze, "BonFIRE Debian Squeeze 2G v3"
+set :zabbix, "BonFIRE Zabbix Aggregator v5"
 set :wan, "BonFIRE WAN"
 
 
@@ -48,8 +48,8 @@ end
 # App servers
 group :app do
   at "fr-inria"
-  at "de-hlrs"
-  instance_type "small"
+  # at "de-hlrs"
+  instance_type "lite"
   connect_to conf[:wan]
   deploy conf[:squeeze]
   provider :puppet,
