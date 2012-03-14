@@ -1,7 +1,7 @@
 require 'sinatra'
 
 def registered?
-  cmd = '. /etc/default/bonfire && curl -f http://$ROUTER_IP:8000/hosts -X POST -d "ip=$WAN_IP"'
+  cmd = '. /etc/default/bonfire && unset http_proxy && curl -vf http://$BALANCER_IP:8000/hosts -X POST -d "ip=$WAN_IP"'
   system(cmd)
   $?.exitstatus == 0
 rescue Exception => e
@@ -20,6 +20,12 @@ Thread.new{
 
 get '/' do
   "UP"
+end
+
+get '/stress' do
+  duration = (params[:duration] || 5).to_i
+  system "stress --cpu 2 --io 4 --vm 2 --vm-bytes 512M --timeout #{duration}s"
+  "Stressed for #{duration}s"
 end
 
 get '/delay' do

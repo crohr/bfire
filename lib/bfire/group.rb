@@ -73,11 +73,13 @@ module Bfire
         provisioned = false
         ip = vm['nic'][0]['ip']
         engine.ssh(ip, 'root') {|s|
-          provisioned = unless provider.install(s)
+          location = vm['name'].scan(/--(.+)--/).flatten[0]
+          ctx = template(location).context.merge(:wan_ip => ip)
+          provisioned = unless provider.install(s, ctx)
             engine.logger.error "Failed to install provider on #{vm.inspect} (IP=#{ip})."
             false
           else
-            result = provider.run(s) do |stream|
+            result = provider.run(s, ctx) do |stream|
               engine.logger.info "#{banner}[#{ip}] #{stream}"
             end
           end
@@ -174,6 +176,7 @@ module Bfire
 
     def reload
       each(&:reload)
+      self
     end
 
     def ssh_accessible?(vms)

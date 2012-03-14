@@ -1,8 +1,14 @@
 class haproxy {
   include rsyslog
 
+  exec{"disable apache2":
+    command => "/etc/init.d/apache2 stop",
+    user => root
+  }
+
   package{"haproxy":
-    ensure => installed
+    ensure => installed,
+    require => Exec["disable apache2"]
   }
   service{"haproxy":
     ensure => running,

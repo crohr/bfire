@@ -472,11 +472,12 @@ module Bfire
       raise ArgumentError, "You MUST provide a block when calling #ssh" if block.nil?
       log = !!options.delete(:log)
       options[:timeout] ||= 10
-      if options.has_key?(:password)
-        options[:auth_methods] ||= ['keyboard-interactive']
-      else
-        options[:keys] ||= [conf[:key]].compact
+      if conf.has_key?(:password)
+        options[:password] = conf[:password]
+        # options[:auth_methods] ||= ['keyboard-interactive']
       end
+      options[:keys] ||= [conf[:key]].compact
+
       max_attempts = options[:max_attempts] || conf[:ssh_max_attempts]
       logger.info "#{banner}SSHing to #{username}@#{fqdn.inspect}..." if log
       attempts = 0

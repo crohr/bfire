@@ -20,9 +20,9 @@ defaults
 	retries	3
 	option redispatch
 	maxconn	2000
-	contimeout	5000
-	clitimeout	50000
-	srvtimeout	50000
+	contimeout	5000000
+	clitimeout	5000000
+	srvtimeout	5000000
 
 listen	apps 0.0.0.0:80
 
@@ -33,9 +33,9 @@ listen	apps 0.0.0.0:80
 	
 	balance	roundrobin
 	<% hosts.each_with_index do |host, index| %>
-	server	inst<%= index %> <%= host %>:80 minconn 1 maxconn 3 check inter 3000 fall 5 rise 1
+	server	inst<%= index %> <%= host %>:80 minconn 1 maxconn 4 check inter 3000 fall 5 rise 1
 	<% end %>
-	srvtimeout	20000
+	srvtimeout	3000000
 
 	option	httpclose		# disable keep-alive
 

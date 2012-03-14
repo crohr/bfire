@@ -76,6 +76,11 @@ module Bfire
     def merge_defaults!(template)
       @properties = template.properties.merge(@properties)
       @context = template.context.merge(@context)
+      group.dependencies.each{|gname,block|
+        # Wait until all dependencies are resolved (i.e. no longer nil)
+        sleep(5) until (hash=block.call(group.engine.group(gname).reload)).all?{|k,v| !v.nil?}
+        @context.merge!(hash)
+      }
       template.nics.each do |nic|
         @nics.unshift nic.clone
       end
@@ -133,9 +138,6 @@ module Bfire
       h['context']['metrics'] = XML::Node.new_cdata(metrics.map{|m|
         "<metric>"+[m[:name], m[:command]].join(",")+"</metric>"
       }.join("")) unless metrics.empty?
-      group.dependencies.each{|gname,block|
-        h['context'].merge!(block.call(group.engine.group(gname)))
-      }
       h
     end
   end # class Template

@@ -91,7 +91,7 @@ BANNER
   #   logger.level = original_logger_level
   #   @options[:logger] = logger
   # end
-  opts.on("--debug", "Set the logging level (DEBUG,INFO,WARN,ERROR,UNKNOWN) [default=#{engine.conf[:logging]}].") do |v|
+  opts.on("--debug=", "Set the logging level (DEBUG,INFO,WARN,ERROR,UNKNOWN) [default=#{engine.conf[:logging]}].") do |v|
     @options[:logging] = Logger.const_get(v.to_s.upcase)
   end
   opts.on("--version", "Display the version.") do |v|

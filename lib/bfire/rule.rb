@@ -7,7 +7,7 @@ module Bfire
 
     def initialize(group, opts = {})
       @group = group
-      @opts = {:period => 5*60, :initial => 1, :range => 1..1}.merge(opts)
+      @opts = {:period => 5*60, :initial => 1, :range => 1..1, :count => 1}.merge(opts)
     end
 
     # we only support round-robin placement for now
@@ -19,7 +19,7 @@ module Bfire
         # too many times.
         if scale_up?
           group.engine.logger.info "#{group.banner}Scaling up!"
-          manage(scale(:up))
+          manage(scale(:up, @opts[:count]))
         elsif scale_down?
           group.engine.logger.info "#{group.banner}Scaling down!"
           manage(scale(:down))
@@ -65,7 +65,7 @@ module Bfire
       if failed = vms.find{|compute| compute['state'] == 'FAILED'}
         group.engine.logger.warn "#{group.banner}Compute #{failed.signature} is in a FAILED state."
         if group.triggered_events.include?(:ready)
-          group.trigger :error
+          # group.trigger :error
         else
           group.trigger :scale_error
         end
@@ -84,7 +84,7 @@ module Bfire
             if provisioned
               group.trigger :ready
             else
-              group.trigger :error
+              # group.trigger :error
             end
           end
           monitor
