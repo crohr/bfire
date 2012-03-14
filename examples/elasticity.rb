@@ -17,7 +17,7 @@ set :wan, "BonFIRE WAN"
 # Monitoring
 group :eye, :tag => "BonFIRE-monitor" do
   at "fr-inria"
-  instance_type "small"
+  instance_type "lite"
   deploy conf[:zabbix]
   connect_to conf[:wan]
 end
@@ -25,7 +25,7 @@ end
 # HTTP Routing
 group :web do
   at "fr-inria"
-  instance_type 'small'
+  instance_type 'lite'
   deploy conf[:squeeze]
   # Two interfaces for the publicly facing server
   connect_to conf[:wan]
@@ -66,7 +66,7 @@ group :app do
 
   # Scaling
   scale 1..10, {
-    :initial => 2,
+    :initial => 1,
     :up => lambda {|engine|
       values = engine.metric("connection_waiting_time",
         :hosts => engine.group(:web).take(:first),

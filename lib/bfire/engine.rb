@@ -342,8 +342,7 @@ module Bfire
           connection.root.experiments.submit(
             :name => conf[:name],
             :description => conf[:description],
-            :walltime => conf[:walltime],
-            :status => "waiting"
+            :walltime => conf[:walltime]
           )
         else
           connection.root.experiments.find{|exp|
@@ -521,17 +520,17 @@ module Bfire
       experiment.reload
       has_changed = (@experiment_state != experiment['status'])
       case experiment['status']
-      when 'waiting'
-        logger.info "#{banner}Experiment is waiting. Nothing to do..."
+      when 'ready'
+        logger.info "#{banner}Experiment is ready. Nothing to do..."
         sleep_time = 10
       when 'running'
         logger.info "#{banner}Experiment is running."
         trigger :running if has_changed
         sleep_time = 30
-      when 'terminating', 'canceling'
+      when 'stopped'
         trigger :stopped if has_changed
         sleep_time = 10
-      when 'terminated', 'canceled'
+      when 'terminated'
         trigger :terminated if has_changed
       end
       @experiment_state = experiment['status']

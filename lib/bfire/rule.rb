@@ -69,7 +69,7 @@ module Bfire
         else
           group.trigger :scale_error
         end
-      elsif vms.all?{|compute| compute['state'] == 'ACTIVE'}
+      elsif vms.all?{|compute| compute['state'] == 'RUNNING'}
         group.engine.logger.info "#{group.banner}All compute resources are ACTIVE"
         if group.ssh_accessible?(vms)
           group.engine.logger.info "#{group.banner}All compute resources are SSH-able"
