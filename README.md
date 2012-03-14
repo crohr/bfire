@@ -1,4 +1,5 @@
 # bfire
+
 A powerful DSL to launch experiments on BonFIRE.
 
 What this does for you:
@@ -12,8 +13,7 @@ What this does for you:
 * Registers metrics into Zabbix;
 * Scale up or scale down groups based on any condition you want, including metric values.
 
-This is very much a work in progress, and a proof of concept. 
-The code is definitely not something you want to look at.
+This is very much a work in progress, and a proof of concept.
 
 A screencast is available at
 <http://bonfire-dev.gforge.inria.fr/public/bfire.mov>.
@@ -90,4 +90,5 @@ Content of `my-experiment.rb`:
 See the `examples` directory for up to date examples.
 
 ## Authors
+
 * Cyril Rohr <cyril.rohr@inria.fr>
